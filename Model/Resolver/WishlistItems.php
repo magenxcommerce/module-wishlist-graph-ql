@@ -3,7 +3,7 @@
  * Copyright © Magento, Inc. All rights reserved.
  * See COPYING.txt for license details.
  */
-declare(strict_types=1);
+declare (strict_types = 1);
 
 namespace Magento\WishlistGraphQl\Model\Resolver;
 
@@ -13,15 +13,15 @@ use Magento\Framework\GraphQl\Query\ResolverInterface;
 use Magento\Framework\GraphQl\Schema\Type\ResolveInfo;
 use Magento\Store\Api\Data\StoreInterface;
 use Magento\Store\Model\StoreManagerInterface;
+use Magento\Wishlist\Model\Item;
 use Magento\Wishlist\Model\ResourceModel\Item\Collection as WishlistItemCollection;
 use Magento\Wishlist\Model\ResourceModel\Item\CollectionFactory as WishlistItemCollectionFactory;
-use Magento\Wishlist\Model\Item;
 use Magento\Wishlist\Model\Wishlist;
 
 /**
  * Fetches the Wishlist Items data according to the GraphQL schema
  */
-class WishlistItemsResolver implements ResolverInterface
+class WishlistItems implements ResolverInterface
 {
     /**
      * @var WishlistItemCollectionFactory
@@ -61,29 +61,43 @@ class WishlistItemsResolver implements ResolverInterface
         /** @var Wishlist $wishlist */
         $wishlist = $value['model'];
 
-        $wishlistItems = $this->getWishListItems($wishlist);
+        /** @var WishlistItemCollection $wishlistItemCollection */
+        $wishlistItemsCollection = $this->getWishListItems($wishlist, $args);
+        $wishlistItems = $wishlistItemsCollection->getItems();
 
         $data = [];
         foreach ($wishlistItems as $wishlistItem) {
             $data[] = [
                 'id' => $wishlistItem->getId(),
-                'qty' => $wishlistItem->getData('qty'),
+                'quantity' => $wishlistItem->getData('qty'),
                 'description' => $wishlistItem->getDescription(),
                 'added_at' => $wishlistItem->getAddedAt(),
                 'model' => $wishlistItem->getProduct(),
+                'itemModel' => $wishlistItem,
             ];
         }
-        return $data;
+        return [
+            'items' => $data,
+            'page_info' => [
+                'current_page' => $wishlistItemsCollection->getCurPage(),
+                'page_size' => $wishlistItemsCollection->getPageSize(),
+                'total_pages' => $wishlistItemsCollection->getLastPageNumber(),
+            ],
+        ];
     }
 
     /**
      * Get wishlist items
      *
      * @param Wishlist $wishlist
-     * @return Item[]
+     * @param array $args
+     * @return WishlistItemCollection
      */
-    private function getWishListItems(Wishlist $wishlist): array
+    private function getWishListItems(Wishlist $wishlist, array $args): WishlistItemCollection
     {
+        $currentPage = $args['currentPage'] ?? 1;
+        $pageSize = $args['pageSize'] ?? 20;
+
         /** @var WishlistItemCollection $wishlistItemCollection */
         $wishlistItemCollection = $this->wishlistItemCollectionFactory->create();
         $wishlistItemCollection
@@ -92,6 +106,13 @@ class WishlistItemsResolver implements ResolverInterface
                 return $store->getId();
             }, $this->storeManager->getStores()))
             ->setVisibilityFilter();
-        return $wishlistItemCollection->getItems();
+        if ($currentPage > 0) {
+            $wishlistItemCollection->setCurPage($currentPage);
+        }
+
+        if ($pageSize > 0) {
+            $wishlistItemCollection->setPageSize($pageSize);
+        }
+        return $wishlistItemCollection;
     }
 }
